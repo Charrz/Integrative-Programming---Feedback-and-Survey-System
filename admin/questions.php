@@ -17,6 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $surveyId     = (int)($_POST['surveyId'] ?? 0);
         $questionText = trim($_POST['question'] ?? '');
         $questionType = $_POST['questionType'] ?? 'text';
+        $isRequired   = isset($_POST['isRequired']) ? 1 : 0;
         $options      = $_POST['options'] ?? [];
 
         if ($surveyId <= 0)          $errors[] = 'Please select a survey.';
@@ -38,8 +39,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($errors)) {
-            $stmt = $conn->prepare("INSERT INTO questions (surveyId, question, questionType) VALUES (?, ?, ?)");
-            $stmt->bind_param('iss', $surveyId, $questionText, $questionType);
+            $stmt = $conn->prepare("INSERT INTO questions (surveyId, question, questionType, isRequired) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param('issi', $surveyId, $questionText, $questionType, $isRequired);
             if ($stmt->execute()) {
                 $qId = $stmt->insert_id;
                 // Insert options for mcq
@@ -67,14 +68,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $questionText = trim($_POST['question'] ?? '');
         $options      = $_POST['options'] ?? [];
         $surveyId     = (int)($_POST['surveyId'] ?? 0);
+        $isRequired   = isset($_POST['isRequired']) ? 1 : 0;
 
         if (empty($questionText)) $errors[] = 'Question text is required.';
 
         if (empty($errors)) {
             // Get question type from DB
             $qRow = $conn->query("SELECT questionType FROM questions WHERE questionId=$questionId")->fetch_assoc();
-            $stmt = $conn->prepare("UPDATE questions SET question=? WHERE questionId=?");
-            $stmt->bind_param('si', $questionText, $questionId);
+            $stmt = $conn->prepare("UPDATE questions SET question=?, isRequired=? WHERE questionId=?");
+            $stmt->bind_param('sii', $questionText, $isRequired, $questionId);
             if ($stmt->execute()) {
                 // Refresh options if mcq
                 if ($qRow['questionType'] === 'mcq') {
@@ -148,6 +150,7 @@ $countSql = "SELECT COUNT(*) AS c FROM questions q
              JOIN surveys s ON q.surveyId=s.surveyId
              WHERE $where";
 $listSql  = "SELECT q.questionId, q.question, q.questionType, q.surveyId,
+                    q.isRequired,
                     s.title AS surveyTitle,
                     (SELECT COUNT(*) FROM question_options qo WHERE qo.questionId=q.questionId) AS optionCount
              FROM questions q
@@ -188,6 +191,7 @@ if ($filterSurveyId > 0) {
 }
 
 $qp = ['surveyId'=>$filterSurveyId,'search'=>$search,'type'=>$typeF,'sort'=>$sort,'dir'=>$dir];
+$questionColspan = $filterSurveyId ? 6 : 7;
 
 function sortLink3(string $col, string $label, string $cs, string $cd, array $qp): string {
     $nd = ($cs===$col&&$cd==='ASC')?'DESC':'ASC';
@@ -251,6 +255,7 @@ function sortLink3(string $col, string $label, string $cs, string $cd, array $qp
                     <th><?= sortLink3('questionId','#',$sort,$dir,$qp) ?></th>
                     <th><?= sortLink3('question','Question',$sort,$dir,$qp) ?></th>
                     <th><?= sortLink3('questionType','Type',$sort,$dir,$qp) ?></th>
+                    <th>Required</th>
                     <?php if (!$filterSurveyId): ?>
                     <th><?= sortLink3('surveyTitle','Survey',$sort,$dir,$qp) ?></th>
                     <?php endif; ?>
@@ -260,7 +265,7 @@ function sortLink3(string $col, string $label, string $cs, string $cd, array $qp
             </thead>
             <tbody>
             <?php if ($questions->num_rows === 0): ?>
-                <tr><td colspan="6">
+                <tr><td colspan="<?= $questionColspan ?>">
                     <div class="empty-state">
                         <div class="empty-icon">❓</div>
                         <h3>No questions found</h3>
@@ -280,6 +285,11 @@ function sortLink3(string $col, string $label, string $cs, string $cd, array $qp
                         ?>
                         <span class="badge <?= $typeCss[$q['questionType']] ?? 'badge-user' ?>">
                             <?= $typeLabel[$q['questionType']] ?? $q['questionType'] ?>
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge <?= (int)$q['isRequired'] === 1 ? 'badge-active' : 'badge-inactive' ?>">
+                            <?= (int)$q['isRequired'] === 1 ? 'Yes' : 'No' ?>
                         </span>
                     </td>
                     <?php if (!$filterSurveyId): ?>
@@ -352,6 +362,12 @@ function sortLink3(string $col, string $label, string $cs, string $cd, array $qp
                         <option value="mcq"    <?= ($_POST['questionType']??'')==='mcq'   ?'selected':''?>>Multiple Choice</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" name="isRequired" value="1" <?= (($_POST['isRequired'] ?? '1') == '1') ? 'checked' : '' ?>>
+                        Required question
+                    </label>
+                </div>
                 <div id="options-block" style="display:none;">
                     <div class="form-group">
                         <label class="form-label">Answer Options</label>
@@ -389,6 +405,12 @@ function sortLink3(string $col, string $label, string $cs, string $cd, array $qp
                 </div>
                 <div class="form-hint" style="margin-bottom:12px;">
                     Type: <strong><?= ucfirst($editQuestion['questionType']) ?></strong> (cannot be changed after creation)
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" name="isRequired" value="1" <?= (int)($editQuestion['isRequired'] ?? 1) === 1 ? 'checked' : '' ?>>
+                        Required question
+                    </label>
                 </div>
                 <?php if ($editQuestion['questionType'] === 'mcq'): ?>
                 <div class="form-group">

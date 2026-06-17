@@ -8,19 +8,21 @@ $questions = [];
 $browseSurveys = [];
 
 if ($token !== '') {
-    $stmt = $conn->prepare("SELECT surveyId, title, description FROM surveys WHERE shareToken = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT surveyId, title, description, isActive FROM surveys WHERE shareToken = ? LIMIT 1");
     $stmt->bind_param('s', $token);
     $stmt->execute();
     $survey = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    if ($survey && isLoggedIn()) {
+    if ($survey && (int)$survey['isActive'] !== 1) {
+        $survey = null;
+    } elseif ($survey && isLoggedIn()) {
         logAudit($conn, currentUserId(), 'OPEN SURVEY: ' . $survey['title']);
     }
 }
 
 if ($survey) {
-    $stmt = $conn->prepare("SELECT questionId, question, questionType FROM questions WHERE surveyId = ? ORDER BY questionId");
+    $stmt = $conn->prepare("SELECT questionId, question, questionType, isRequired FROM questions WHERE surveyId = ? ORDER BY questionId");
     $stmt->bind_param('i', $survey['surveyId']);
     $stmt->execute();
     $questionRows = $stmt->get_result();
@@ -45,10 +47,12 @@ if ($token === '') {
 
     $browseStmt = $conn->prepare(
         "SELECT s.surveyId, s.title, s.description, s.createdAt, s.shareToken, u.userName,
+                s.isActive,
                 (SELECT COUNT(*) FROM questions q WHERE q.surveyId = s.surveyId) AS questionCount,
                 (SELECT COUNT(*) FROM responses r WHERE r.surveyId = s.surveyId) AS responseCount
          FROM surveys s
          JOIN user u ON s.userId = u.userId
+         WHERE s.isActive = 1
          ORDER BY s.createdAt DESC
          LIMIT 12"
     );
@@ -69,12 +73,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $survey) {
             $preparedAnswers = [];
             foreach ($questions as $question) {
                 $questionId = (int)$question['questionId'];
+                $isRequired = (int)($question['isRequired'] ?? 1) === 1;
 
                 if ($question['questionType'] !== 'mcq') {
                     if ($question['questionType'] === 'rating') {
-                        $rating = (int)($postedAnswers[$questionId] ?? 0);
+                        $rawRating = trim((string)($postedAnswers[$questionId] ?? ''));
+                        if ($rawRating === '') {
+                            if ($isRequired) {
+                                throw new Exception('Please rate every required rating question from 1 to 5.');
+                            }
+                            continue;
+                        }
+                        $rating = (int)$rawRating;
                         if ($rating < 1 || $rating > 5) {
-                            throw new Exception('Please rate every rating question from 1 to 5.');
+                            throw new Exception('Rating questions must be answered from 1 to 5.');
                         }
                         $preparedAnswers[] = [
                             'questionId' => $questionId,
@@ -84,7 +96,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $survey) {
                     } elseif ($question['questionType'] === 'text') {
                         $answerText = trim((string)($postedAnswers[$questionId] ?? ''));
                         if ($answerText === '') {
-                            throw new Exception('Please answer every text question.');
+                            if ($isRequired) {
+                                throw new Exception('Please answer every required text question.');
+                            }
+                            continue;
                         }
                         $preparedAnswers[] = [
                             'questionId' => $questionId,
@@ -98,11 +113,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $survey) {
                 }
 
                 $optionId = (int)($postedAnswers[$questionId] ?? 0);
+                if ($optionId <= 0) {
+                    if ($isRequired) {
+                        throw new Exception('Please answer every required multiple choice question.');
+                    }
+                    continue;
+                }
                 $validOptionIds = array_map(
                     static fn(array $option): int => (int)$option['optionsId'],
                     $question['options']
                 );
-                if ($optionId <= 0 || !in_array($optionId, $validOptionIds, true)) {
+                if (!in_array($optionId, $validOptionIds, true)) {
                     throw new Exception('Please answer all multiple choice questions.');
                 }
                 $preparedAnswers[] = [
@@ -264,13 +285,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $survey) {
                     <div class="question-card">
                         <div class="q-num">Question <?= $index + 1 ?></div>
                         <div class="q-text"><?= htmlspecialchars($question['question']) ?></div>
+                        <div class="form-hint" style="margin-bottom:12px;">
+                            <?= (int)($question['isRequired'] ?? 1) === 1 ? 'Required' : 'Optional' ?>
+                        </div>
                         <?php if ($question['questionType'] === 'mcq'): ?>
                             <ul class="options-list">
                                 <?php foreach ($question['options'] as $option): ?>
                                     <?php $checked = ((int)($postedAnswers[$question['questionId']] ?? 0) === (int)$option['optionsId']); ?>
                                     <li class="option-item">
                                         <label>
-                                            <input type="radio" name="answers[<?= (int)$question['questionId'] ?>]" value="<?= (int)$option['optionsId'] ?>" <?= $checked ? 'checked' : '' ?> required>
+                                            <input type="radio" name="answers[<?= (int)$question['questionId'] ?>]" value="<?= (int)$option['optionsId'] ?>" <?= $checked ? 'checked' : '' ?> <?= (int)($question['isRequired'] ?? 1) === 1 ? 'required' : '' ?>>
                                             <span><?= htmlspecialchars($option['optionText']) ?></span>
                                         </label>
                                     </li>
@@ -283,7 +307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $survey) {
                                     id="q<?= (int)$question['questionId'] ?>"
                                     name="answers[<?= (int)$question['questionId'] ?>]"
                                     class="form-control"
-                                    required
+                                    <?= (int)($question['isRequired'] ?? 1) === 1 ? 'required' : '' ?>
                                 >
                                     <option value="">Select a rating</option>
                                     <?php for ($rating = 1; $rating <= 5; $rating++): ?>
@@ -301,7 +325,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $survey) {
                                     name="answers[<?= (int)$question['questionId'] ?>]"
                                     class="form-control"
                                     rows="4"
-                                    required
+                                    <?= (int)($question['isRequired'] ?? 1) === 1 ? 'required' : '' ?>
                                 ><?= htmlspecialchars((string)($postedAnswers[$question['questionId']] ?? '')) ?></textarea>
                             </div>
                         <?php endif; ?>

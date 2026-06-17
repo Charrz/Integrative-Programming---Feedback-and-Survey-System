@@ -47,6 +47,22 @@ $recentAudit = $conn->query(
     </div>
 </div>
 
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <h2>Quick Actions</h2>
+    </div>
+    <div class="card-body">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <a href="<?= appUrl('/admin/surveys.php') ?>" class="btn btn-primary btn-sm">Manage Surveys</a>
+            <a href="<?= appUrl('/admin/questions.php') ?>" class="btn btn-outline btn-sm">Manage Questions</a>
+            <a href="<?= appUrl('/admin/responses.php') ?>" class="btn btn-outline btn-sm">View Responses</a>
+            <a href="<?= appUrl('/admin/users.php') ?>" class="btn btn-outline btn-sm">User Accounts</a>
+            <a href="<?= appUrl('/admin/reports.php') ?>" class="btn btn-outline btn-sm">Reports</a>
+            <a href="<?= appUrl('/admin/audit.php') ?>" class="btn btn-outline btn-sm">Audit Trail</a>
+        </div>
+    </div>
+</div>
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
 
     <!-- Recent Surveys -->

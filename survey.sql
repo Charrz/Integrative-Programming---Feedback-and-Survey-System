@@ -113,6 +113,7 @@ CREATE TABLE `questions` (
   `surveyId` int NOT NULL,
   `question` varchar(255) NOT NULL,
   `questionType` varchar(20) NOT NULL DEFAULT 'text' COMMENT 'text | rating | mcq',
+  `isRequired` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`questionId`),
   KEY `surveyId` (`surveyId`),
   CONSTRAINT `questions_ibfk_1` FOREIGN KEY (`surveyId`) REFERENCES `surveys` (`surveyId`)
@@ -218,6 +219,7 @@ CREATE TABLE `surveys` (
   `shareToken` varchar(255) NOT NULL,
   `title` varchar(255) NOT NULL,
   `description` text,
+  `isActive` tinyint(1) NOT NULL DEFAULT '1',
   `createdAt` datetime NOT NULL,
   PRIMARY KEY (`surveyId`),
   UNIQUE KEY `uq_token` (`shareToken`),

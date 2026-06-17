@@ -52,5 +52,19 @@ function ensureAnswerSchema(mysqli $conn): void {
     }
 }
 
+function ensureSurveySchema(mysqli $conn): void {
+    if (!columnExists($conn, 'surveys', 'isActive')) {
+        $conn->query("ALTER TABLE surveys ADD COLUMN isActive TINYINT(1) NOT NULL DEFAULT 1 AFTER description");
+    }
+}
+
+function ensureQuestionSchema(mysqli $conn): void {
+    if (!columnExists($conn, 'questions', 'isRequired')) {
+        $conn->query("ALTER TABLE questions ADD COLUMN isRequired TINYINT(1) NOT NULL DEFAULT 1 AFTER questionType");
+    }
+}
+
+ensureSurveySchema($conn);
+ensureQuestionSchema($conn);
 ensureAnswerSchema($conn);
 ?>

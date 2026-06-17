@@ -19,7 +19,7 @@ $stats = [
 ];
 
 foreach ([
-    'surveys' => 'SELECT COUNT(*) AS c FROM surveys',
+    'surveys' => 'SELECT COUNT(*) AS c FROM surveys WHERE isActive = 1',
     'questions' => 'SELECT COUNT(*) AS c FROM questions',
     'responses' => 'SELECT COUNT(*) AS c FROM responses',
 ] as $key => $sql) {
@@ -42,8 +42,10 @@ $stmt->close();
 
 $surveyWhere = '';
 if ($search !== '') {
-    $surveyWhere = 'WHERE s.title LIKE ? OR s.description LIKE ? OR u.userName LIKE ?';
+    $surveyWhere = 'WHERE s.isActive = 1 AND (s.title LIKE ? OR s.description LIKE ? OR u.userName LIKE ?)';
     $needle = '%' . $search . '%';
+} else {
+    $surveyWhere = 'WHERE s.isActive = 1';
 }
 
 $surveySql = "
@@ -121,7 +123,7 @@ $submissionStmt->close();
             <?php endif; ?>
 
             <div class="stat-grid">
-                <div class="stat-card">
+    <div class="stat-card">
                     <div class="stat-label">Available Surveys</div>
                     <div class="stat-value"><?= $stats['surveys'] ?></div>
                 </div>
@@ -163,6 +165,7 @@ $submissionStmt->close();
                                     <th>Creator</th>
                                     <th>Questions</th>
                                     <th>Responses</th>
+                                    <th>Status</th>
                                     <th></th>
                                 </tr>
                             </thead>
@@ -189,6 +192,7 @@ $submissionStmt->close();
                                             <td><?= htmlspecialchars($survey['userName']) ?></td>
                                             <td><?= (int)$survey['questionCount'] ?></td>
                                             <td><?= (int)$survey['responseCount'] ?></td>
+                                            <td><span class="badge badge-active">Active</span></td>
                                             <td style="white-space:nowrap;">
                                                 <a
                                                     href="<?= appUrl('/public/take_survey.php?token=' . urlencode($survey['shareToken'])) ?>"
@@ -199,9 +203,9 @@ $submissionStmt->close();
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
-                                <?php else: ?>
+                                    <?php else: ?>
                                     <tr>
-                                        <td colspan="5">
+                                        <td colspan="6">
                                             <div class="empty-state">
                                                 <h3>No surveys found</h3>
                                                 <p>Try a different search or check back later.</p>

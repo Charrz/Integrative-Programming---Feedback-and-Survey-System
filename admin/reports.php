@@ -132,9 +132,13 @@ $users = $runReport(
 );
 
 $questions = $conn->query(
-    "SELECT q.questionId, q.question, q.questionType, s.title
+    "SELECT q.questionId, q.question, q.questionType, s.title,
+            COUNT(a.answerId) AS answerCount,
+            AVG(a.ratingValue) AS avgRating
      FROM questions q
      JOIN surveys s ON q.surveyId = s.surveyId
+     LEFT JOIN answers a ON a.questionId = q.questionId
+     GROUP BY q.questionId, q.question, q.questionType, s.title
      ORDER BY s.title, q.questionId
      LIMIT 50"
 );
@@ -289,10 +293,10 @@ $showQuestions = $category === 'all' || $category === 'questions';
 
 <?php if ($showQuestions): ?>
 <div class="card report-section">
-    <div class="card-header"><h2>Question Category Report</h2></div>
+    <div class="card-header"><h2>Question Analytics</h2></div>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>#</th><th>Survey</th><th>Question</th><th>Type</th></tr></thead>
+            <thead><tr><th>#</th><th>Survey</th><th>Question</th><th>Type</th><th>Answers</th><th>Avg Rating</th></tr></thead>
             <tbody>
             <?php if ($questions->num_rows): ?>
                 <?php while ($question = $questions->fetch_assoc()): ?>
@@ -301,10 +305,16 @@ $showQuestions = $category === 'all' || $category === 'questions';
                         <td><?= htmlspecialchars($question['title']) ?></td>
                         <td><?= htmlspecialchars($question['question']) ?></td>
                         <td><?= ucfirst(htmlspecialchars($question['questionType'])) ?></td>
+                        <td><?= (int)$question['answerCount'] ?></td>
+                        <td>
+                            <?= $question['questionType'] === 'rating' && $question['avgRating'] !== null
+                                ? number_format((float)$question['avgRating'], 2)
+                                : '—' ?>
+                        </td>
                     </tr>
                 <?php endwhile; ?>
             <?php else: ?>
-                <tr><td colspan="4"><div class="empty-state"><h3>No questions found</h3><p>Questions added to surveys will appear here.</p></div></td></tr>
+                <tr><td colspan="6"><div class="empty-state"><h3>No questions found</h3><p>Questions added to surveys will appear here.</p></div></td></tr>
             <?php endif; ?>
             </tbody>
         </table>

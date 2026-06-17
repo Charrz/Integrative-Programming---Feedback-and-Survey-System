@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'create') {
         $title       = trim($_POST['title'] ?? '');
         $description = trim($_POST['description'] ?? '');
+        $isActive    = isset($_POST['isActive']) ? 1 : 0;
 
         if (empty($title))          $errors[] = 'Survey title is required.';
         if (strlen($title) > 255)   $errors[] = 'Title too long (max 255 chars).';
@@ -33,10 +34,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $token = bin2hex(random_bytes(16));
             $uid   = currentUserId();
             $stmt  = $conn->prepare(
-                "INSERT INTO surveys (userId, shareToken, title, description, createdAt)
-                 VALUES (?, ?, ?, ?, NOW())"
+                "INSERT INTO surveys (userId, shareToken, title, description, isActive, createdAt)
+                 VALUES (?, ?, ?, ?, ?, NOW())"
             );
-            $stmt->bind_param('isss', $uid, $token, $title, $description);
+            $stmt->bind_param('isssi', $uid, $token, $title, $description, $isActive);
             if ($stmt->execute()) {
                 $newId = $stmt->insert_id;
                 logAudit($conn, $uid, "CREATE SURVEY: \"$title\" (ID $newId)");
@@ -54,6 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $surveyId    = (int)($_POST['surveyId'] ?? 0);
         $title       = trim($_POST['title'] ?? '');
         $description = trim($_POST['description'] ?? '');
+        $isActive    = isset($_POST['isActive']) ? 1 : 0;
 
         if (empty($title))        $errors[] = 'Title is required.';
         if (strlen($title) > 255) $errors[] = 'Title too long.';
@@ -68,8 +70,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($errors)) {
-            $stmt = $conn->prepare("UPDATE surveys SET title=?, description=? WHERE surveyId=?");
-            $stmt->bind_param('ssi', $title, $description, $surveyId);
+            $stmt = $conn->prepare("UPDATE surveys SET title=?, description=?, isActive=? WHERE surveyId=?");
+            $stmt->bind_param('ssii', $title, $description, $isActive, $surveyId);
             if ($stmt->execute()) {
                 logAudit($conn, currentUserId(), "UPDATE SURVEY: \"$title\" (ID $surveyId)");
                 flashMessage('success', "Survey updated.");
@@ -132,6 +134,7 @@ if ($search !== '') {
 
 $countSql = "SELECT COUNT(*) AS c FROM surveys s JOIN user u ON s.userId=u.userId WHERE $where";
 $listSql  = "SELECT s.surveyId, s.title, s.description, s.createdAt, s.shareToken,
+                    s.isActive,
                     u.userName,
                     (SELECT COUNT(*) FROM responses r WHERE r.surveyId=s.surveyId) AS responseCount,
                     (SELECT COUNT(*) FROM questions q WHERE q.surveyId=s.surveyId) AS questionCount
@@ -193,6 +196,7 @@ function sortLink2(string $col, string $label, string $cs, string $cd, array $qp
                     <th><?= sortLink2('surveyId','#',$sort,$dir,$qp) ?></th>
                     <th><?= sortLink2('title','Title',$sort,$dir,$qp) ?></th>
                     <th><?= sortLink2('userName','Created By',$sort,$dir,$qp) ?></th>
+                    <th>Status</th>
                     <th>Questions</th>
                     <th><?= sortLink2('responseCount','Responses',$sort,$dir,$qp) ?></th>
                     <th><?= sortLink2('createdAt','Created',$sort,$dir,$qp) ?></th>
@@ -202,7 +206,7 @@ function sortLink2(string $col, string $label, string $cs, string $cd, array $qp
             </thead>
             <tbody>
             <?php if ($surveys->num_rows === 0): ?>
-                <tr><td colspan="8">
+                <tr><td colspan="9">
                     <div class="empty-state">
                         <div class="empty-icon">📋</div>
                         <h3>No surveys yet</h3>
@@ -221,6 +225,11 @@ function sortLink2(string $col, string $label, string $cs, string $cd, array $qp
                         <?php endif; ?>
                     </td>
                     <td><?= htmlspecialchars($s['userName']) ?></td>
+                    <td>
+                        <span class="badge <?= (int)$s['isActive'] === 1 ? 'badge-active' : 'badge-inactive' ?>">
+                            <?= (int)$s['isActive'] === 1 ? 'Active' : 'Inactive' ?>
+                        </span>
+                    </td>
                     <td><?= $s['questionCount'] ?></td>
                     <td><?= $s['responseCount'] ?></td>
                     <td style="white-space:nowrap;font-size:12px;color:var(--neutral-500);"><?= date('M j, Y', strtotime($s['createdAt'])) ?></td>
@@ -277,6 +286,13 @@ function sortLink2(string $col, string $label, string $cs, string $cd, array $qp
                     <label class="form-label">Description</label>
                     <textarea name="description" class="form-control"><?= htmlspecialchars($_POST['description']??'') ?></textarea>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="isActive" class="form-control">
+                        <option value="1" <?= (($_POST['isActive'] ?? '1') == '1') ? 'selected' : '' ?>>Active</option>
+                        <option value="0" <?= (($_POST['isActive'] ?? '') === '0') ? 'selected' : '' ?>>Inactive</option>
+                    </select>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline" onclick="closeModal('modal-create')">Cancel</button>
@@ -306,6 +322,13 @@ function sortLink2(string $col, string $label, string $cs, string $cd, array $qp
                 <div class="form-group">
                     <label class="form-label">Description</label>
                     <textarea name="description" class="form-control"><?= htmlspecialchars($editSurvey['description']) ?></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="isActive" class="form-control">
+                        <option value="1" <?= (int)$editSurvey['isActive'] === 1 ? 'selected' : '' ?>>Active</option>
+                        <option value="0" <?= (int)$editSurvey['isActive'] === 0 ? 'selected' : '' ?>>Inactive</option>
+                    </select>
                 </div>
                 <div class="form-hint" style="margin-top:8px;">
                     Share token: <code><?= htmlspecialchars($editSurvey['shareToken']) ?></code>
